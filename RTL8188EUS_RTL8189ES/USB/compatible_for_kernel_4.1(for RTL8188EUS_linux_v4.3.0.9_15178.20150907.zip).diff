@@ -1,0 +1,157 @@
+--- os_dep\linux\ioctl_cfg80211.c	2015-09-07 15:16:36.000000000 +0800
++++ os_dep\linux\ioctl_cfg80211.c	2015-10-26 13:45:19.000000000 +0800
+@@ -20,12 +20,20 @@
+ #define  _IOCTL_CFG80211_C_
+ 
+ #include <drv_types.h>
+ 
+ #ifdef CONFIG_IOCTL_CFG80211
+ 
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0))
++#define STATION_INFO_SIGNAL		BIT(NL80211_STA_INFO_SIGNAL)
++#define STATION_INFO_TX_BITRATE		BIT(NL80211_STA_INFO_TX_BITRATE)
++#define STATION_INFO_RX_PACKETS		BIT(NL80211_STA_INFO_RX_PACKETS)
++#define STATION_INFO_TX_PACKETS		BIT(NL80211_STA_INFO_TX_PACKETS)
++#define STATION_INFO_ASSOC_REQ_IES	0
++#endif /* Linux kernel >= 4.0.0 */
++
+ #include <rtw_wifi_regd.h>
+ 
+ #define RTW_MAX_MGMT_TX_CNT (8)
+ #define RTW_MAX_MGMT_TX_MS_GAS (500)
+ 
+ #define RTW_SCAN_IE_LEN_MAX      2304
+@@ -3887,12 +3895,15 @@
+ 		struct wiphy *wiphy,
+ 	#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,7,0))
+ 		const char *name,
+ 	#else
+ 		char *name,
+ 	#endif
++	#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
++		unsigned char name_assign_type,
++	#endif
+ 		enum nl80211_iftype type, u32 *flags, struct vif_params *params)
+ {
+ 	int ret = 0;
+ 	struct net_device* ndev = NULL;
+ 	_adapter *padapter = wiphy_to_adapter(wiphy);
+ 
+@@ -4184,52 +4195,61 @@
+ 	return 0;
+ }
+ 
+ static int	cfg80211_rtw_del_station(struct wiphy *wiphy, struct net_device *ndev,
+ #if (LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0))
+ 	u8 *mac
+-#else
++#elif (LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0))
+ 	const u8 *mac
++#else
++	struct station_del_parameters *params
+ #endif
+ )
+ {
+ 	int ret=0;	
+ 	_irqL irqL;
+ 	_list	*phead, *plist;
+ 	u8 updated = _FALSE;
++	const u8 *target_mac;
+ 	struct sta_info *psta = NULL;
+ 	_adapter *padapter = (_adapter *)rtw_netdev_priv(ndev);
+ 	struct mlme_priv *pmlmepriv = &(padapter->mlmepriv);
+ 	struct sta_priv *pstapriv = &padapter->stapriv;
+ 
+ 	DBG_871X("+"FUNC_NDEV_FMT"\n", FUNC_NDEV_ARG(ndev));
+ 
++	#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0))
++		target_mac = mac;
++	#else
++		target_mac = params->mac;
++	#endif
++
+ 	if(check_fwstate(pmlmepriv, (_FW_LINKED|WIFI_AP_STATE)) != _TRUE)		
+ 	{
+ 		DBG_8192C("%s, fw_state != FW_LINKED|WIFI_AP_STATE\n", __func__);
+ 		return -EINVAL;		
+ 	}
+ 
+ 
+-	if(!mac)
++	if (!target_mac)
+ 	{
+ 		DBG_8192C("flush all sta, and cam_entry\n");
+ 
+ 		flush_all_cam_entry(padapter);	//clear CAM
+ 
+ 		ret = rtw_sta_flush(padapter);
+ 		
+ 		return ret;
+ 	}	
+ 
+ 
+-	DBG_8192C("free sta macaddr =" MAC_FMT "\n", MAC_ARG(mac));
++	DBG_8192C("free sta macaddr =" MAC_FMT "\n", MAC_ARG(target_mac));
+ 
+-	if (mac[0] == 0xff && mac[1] == 0xff &&
+-	    mac[2] == 0xff && mac[3] == 0xff &&
+-	    mac[4] == 0xff && mac[5] == 0xff) 
++	if (target_mac[0] == 0xff && target_mac[1] == 0xff &&
++		target_mac[2] == 0xff && target_mac[3] == 0xff &&
++		target_mac[4] == 0xff && target_mac[5] == 0xff) 
+ 	{
+ 		return -EINVAL;	
+ 	}
+ 
+ 
+ 	_enter_critical_bh(&pstapriv->asoc_list_lock, &irqL);
+@@ -4241,13 +4261,13 @@
+ 	while ((rtw_end_of_queue_search(phead, plist)) == _FALSE)	
+ 	{
+ 		psta = LIST_CONTAINOR(plist, struct sta_info, asoc_list);
+ 		
+ 		plist = get_next(plist);	
+ 	
+-		if(_rtw_memcmp((u8 *)mac, psta->hwaddr, ETH_ALEN))
++		if (_rtw_memcmp((u8 *)target_mac, psta->hwaddr, ETH_ALEN))
+ 		{
+ 			if(psta->dot8021xalg == 1 && psta->bpairwise_key_installed == _FALSE)
+ 			{
+ 				DBG_8192C("%s, sta's dot8021xalg = 1 and key_installed = _FALSE\n", __func__);
+ 			}
+ 			else
+--- os_dep\linux\rtw_android.c	2015-09-07 15:16:36.000000000 +0800
++++ os_dep\linux\rtw_android.c	2015-10-26 11:41:35.000000000 +0800
+@@ -30,12 +30,16 @@
+ #include <linux/wlan_plat.h>
+ #else
+ #include <linux/wifi_tiwlan.h>
+ #endif
+ #endif /* defined(RTW_ENABLE_WIFI_CONTROL_FUNC) */
+ 
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0))
++#define strnicmp	strncasecmp
++#endif /* Linux kernel >= 4.0.0 */
++
+ #ifdef CONFIG_GPIO_WAKEUP
+ #include <linux/interrupt.h>
+ #include <linux/irq.h>
+ #endif
+ 
+ extern void macstr2num(u8 *dst, u8 *src);
+--- Makefile	2015-09-08 10:57:04.000000000 +0800
++++ Makefile	2015-10-26 14:09:46.000000000 +0800
+@@ -12,12 +12,13 @@
+ EXTRA_CFLAGS += -Wno-unused-label
+ EXTRA_CFLAGS += -Wno-unused-parameter
+ EXTRA_CFLAGS += -Wno-unused-function
+ EXTRA_CFLAGS += -Wno-unused
+ 
+ #EXTRA_CFLAGS += -Wno-uninitialized
++#EXTRA_CFLAGS += -Wno-error=date-time	# Fix compile error on gcc 4.9 and later
+ 
+ EXTRA_CFLAGS += -I$(src)/include
+ 
+ EXTRA_LDFLAGS += --strip-debug
+ 
+ CONFIG_AUTOCFG_CP = n
