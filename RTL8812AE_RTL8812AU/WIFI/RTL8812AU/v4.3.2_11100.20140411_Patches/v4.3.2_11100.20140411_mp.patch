@@ -1,0 +1,50 @@
+diff -Naur rtl8812AU_linux_v4.3.2_11100.20140411/hal/rtl8812a/rtl8812a_mp.c rtl8812AU_linux_v4.3.2_11100.20140411_fixedMP/hal/rtl8812a/rtl8812a_mp.c
+--- rtl8812AU_linux_v4.3.2_11100.20140411/hal/rtl8812a/rtl8812a_mp.c	2014-04-11 10:55:47.000000000 +0800
++++ rtl8812AU_linux_v4.3.2_11100.20140411_fixedMP/hal/rtl8812a/rtl8812a_mp.c	2014-06-18 11:16:55.000000000 +0800
+@@ -333,17 +333,9 @@
+ 	u8		rate = pmp->rateidx;
+ 
+ 
+-	// set RF channel register
+-	for (eRFPath = 0; eRFPath < pHalData->NumTotalRFPath; eRFPath++)
+-	{
+-      		if(IS_HARDWARE_TYPE_8192D(pAdapter))
+-			_write_rfreg(pAdapter, eRFPath, ODM_CHANNEL, 0xFF, channel);
+-		else
+-			_write_rfreg(pAdapter, eRFPath, ODM_CHANNEL, 0x3FF, channel);
+-	}
+-	//Hal_mpt_SwitchRfSetting(pAdapter);
++	//SelectChannel(pAdapter, channel);
++	set_channel_bwmode(pAdapter, pAdapter->mppriv.channel, HAL_PRIME_CHNL_OFFSET_DONT_CARE, pAdapter->mppriv.bandwidth);
+ 
+-	SelectChannel(pAdapter, channel);
+ 
+ 	if (pHalData->CurrentChannel == 14 && !pDM_Odm->RFCalibrateInfo.bCCKinCH14) {
+ 		pDM_Odm->RFCalibrateInfo.bCCKinCH14 = _TRUE;
+diff -Naur rtl8812AU_linux_v4.3.2_11100.20140411/os_dep/linux/ioctl_linux.c rtl8812AU_linux_v4.3.2_11100.20140411_fixedMP/os_dep/linux/ioctl_linux.c
+--- rtl8812AU_linux_v4.3.2_11100.20140411/os_dep/linux/ioctl_linux.c	2014-04-11 10:55:47.000000000 +0800
++++ rtl8812AU_linux_v4.3.2_11100.20140411_fixedMP/os_dep/linux/ioctl_linux.c	2014-06-18 14:40:26.000000000 +0800
+@@ -10950,9 +10950,9 @@
+ 	//DBG_871X("%s: channel=%d\n", __func__, channel);
+ 	sprintf( extra, "Change channel %d to channel %d", padapter->mppriv.channel , channel );
+ 	padapter->mppriv.channel = channel;
+-	pHalData->CurrentChannel = channel;
+-	Hal_SetChannel(padapter);
+ 
++	Hal_SetChannel(padapter);
++	pHalData->CurrentChannel = channel;
+ 	//cur_ch_offset =  rtw_get_offset_by_ch(padapter->mppriv.channel);
+ 	//set_channel_bwmode(padapter, padapter->mppriv.channel, cur_ch_offset, padapter->mppriv.bandwidth);
+ 	wrqu->length = strlen(extra) + 1;
+@@ -10982,10 +10982,10 @@
+ 	DBG_871X("%s: bw=%d sg=%d \n", __func__, bandwidth , sg);
+ 	
+ 	padapter->mppriv.bandwidth = (u8)bandwidth;
+-	pHalData->CurrentChannelBW = bandwidth;
+ 	padapter->mppriv.preamble = sg;
+ 	
+ 	SetBandwidth(padapter);
++	pHalData->CurrentChannelBW = bandwidth;
+ 	//cur_ch_offset =  rtw_get_offset_by_ch(padapter->mppriv.channel);
+ 	//set_channel_bwmode(padapter, padapter->mppriv.channel, cur_ch_offset, bandwidth);
+ 
