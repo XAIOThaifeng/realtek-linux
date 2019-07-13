@@ -1,1 +1,1 @@
-Realtek driver for Linux. Files come from Realtek FTP Server.
+Realtek driver for Linux/Android. Files come from Realtek FTP Server.
